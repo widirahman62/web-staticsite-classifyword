@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classify Word</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <style>
+        [x-cloak] {
+            display: none;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/alpinejs/alpine@v2.8.2/dist/alpine.min.js" defer></script>
+</head>
+<body x-cloack x-data="xdata()" class="bg-gray-100">
+        <div class="container mx-auto">
+            <div x-show="!classify" class="flex flex-col items-center justify-center h-screen">
+                <div class="w-full max-w-sm">
+                    <form class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 text-sm font-bold mb-2" for="word">
+                                Classify Word App
+                            </label>
+                            <input x-model="input" @keydown.enter.prevent="analyze()" autocomplete="off" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" type="text" placeholder="Masukkan kalimat/kata...">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <button x-on:click.prevent="analyze()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="button">
+                                Analisa
+                            </button>
+                        </div>
+                    </form>
+                    <div x-show.transition.opacity.duration.500ms="error" class="flexx w-full items-center justify-center px-16 py-4">
+                        <div class="flex p-2 items-center justify-center bg-red-100 rounded-lg">
+                            <h1 class="text-gray-800">Input wajib diisi</h1>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div x-show="classify" class="flex flex-col h-screen px-12 max-w-screen-2xl mx-auto">
+            <div class="flex w-full h-36 py-12">
+                <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" x-on:click="clear()" type="button">
+                    <i class="material-icons">arrow_back</i>
+                </button>
+            </div>
+
+            <div class="mt-2 flex items-center justify-center w-full h-auto py-12 px-2 bg-gray-200">
+                <p x-text="input" class="italic break-words text-gray-600"></p>
+            </div>
+
+            <div x-show="words.length < 1" class="mt-8 flex flex-col w-full">
+                <h1 class="flex">Semua kata yang diinputkan belum terdaftar</h1>
+            </div>
+
+            <div x-show="words.length > 0" class="mt-8 flex flex-col w-full">
+                <h1 class="flex mb-6">Jenis kata terdaftar yang ditemukan dari input :</h1>
+                <div class="grid sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
+                    <template x-for="(item, index) in words" :key="index">
+                        <div class="bg-gray-200 rounded-lg p-4">
+                            <h1 class="font-medium" x-text="item.kata.charAt(0).toUpperCase() + item.kata.slice(1)"/>
+                            <h4>Termasuk jenis kata <span x-text="item.jenis.toLowerCase()"/></h4>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+</body>
+<script>
+    function xdata(){
+        return {
+            classify:false,
+            dataendpoint:'http://127.0.0.1:8081/',
+            error:false,
+            input:'', 
+            words:[],
+            clear(){
+                this.input=''
+                this.classify=false
+            },
+            cekKamus(kata){
+                let kamus = axios.get(this.dataendpoint+kata)
+                let datakamus = kamus.then((r)=> r.data).catch ((e)=>{
+                    console.clear()
+                    return null
+                })                
+                return datakamus
+            },
+
+            //fungsi untuk menghapus suffix seperti -ku, -mu, -kah, dsb
+            Del_Inflection_Suffixes(kata){ 
+                let kataAsal = kata;
+                
+                if(kata.match(/-?([km]u|nya|[kl]ah|pun)$/g)){ // Cek Inflection Suffixes
+                    let _kata = kata.replace(/-?([km]u|nya|[kl]ah|pun)$/g,"")
+                    return _kata;
+                } else {
+                    return kataAsal;
+                }
+            },
+
+            // Cek Prefix Disallowed Sufixes (Kombinasi Awalan dan Akhiran yang tidak diizinkan)
+            Cek_Prefix_Disallowed_Sufixes(kata){
+                
+                if(kata.match(/^(be)/) && kata.match(/-?(i)$/g)){ // be- dan -i
+                    return true;
+                }
+
+                if(kata.match(/^(se)/) && kata.match(/-?(i|kan)$/g)){ // se- dan -i,-kan
+                    return true;
+                }
+                
+                if(kata.match(/^(di)/) && kata.match(/-?(an)$/g)){ // di- dan -an
+                    return true;
+                }
+                
+                if(kata.match(/^(me)/) && kata.match(/-?(an)$/g)){ // me- dan -an
+                    return true;
+                }
+                
+                if(kata.match(/^(ke)/) && kata.match(/-?(i|kan)$/g)){ // ke- dan -i,-kan
+                    return true;
+                }
+                return false;
+            },
+
+            // Hapus Derivation Suffixes ("-i", "-an" atau "-kan")
+            async Del_Derivation_Suffixes(kata){
+                let kataAsal = kata;
+                if(kata.match(/-?(i|an)$/g)){ // Cek Suffixes
+                    let _kata = kata.replace(/-?(i|an)$/g,'');
+                    let data = await this.cekKamus(_kata) // Cek Kamus
+                    if (data) {
+                        return _kata
+                    } else if(kata.match(/-?(kan)$/g)){
+                        _kata = kata.replace(/-?(kan)$/g,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                    }
+                    if(this.Cek_Prefix_Disallowed_Sufixes(kata)){
+                        return kataAsal;
+                    }
+                /*– Jika Tidak ditemukan di kamus –*/
+                }
+                return kataAsal;
+            },
+
+            // Hapus Derivation Prefix ("di-", "ke-", "se-", "te-", "be-", "me-", atau "pe-")
+            async Del_Derivation_Prefix(kata){
+                let kataAsal = kata;
+
+                /* —— Tentukan Tipe Awalan ————*/
+                if(kata.match(/^(di|[ks]e)/)){ // Jika di-,ke-,se-
+                    let _kata = kata.replace(/^(di|[ks]e)/,'')
+                    let data = await this.cekKamus(_kata)
+                    if (data) {
+                        return _kata
+                    }
+                    _kata_ = this.Del_Derivation_Suffixes(_kata)
+                    data = await this.cekKamus(_kata_)
+                    if (data) {
+                        return _kata_
+                    }
+                    
+                    if(kata.match('/^(diper)/')){ //diper-
+                        _kata = kata.replace(/^(diper)/,'');
+                        _kata_ = this.Del_Derivation_Suffixes(_kata)
+                        
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                        
+                    }
+                    
+                    if(kata.match(/^(ke[bt]er)/)){  //keber- dan keter-
+                        _kata = kata.replace(/^(ke[bt]er)/,'');
+                        _kata_ = this.Del_Derivation_Suffixes(_kata)
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                        
+                }
+                
+                if(kata.match(/^([bt]e)/)){ //Jika awalannya adalah "te-","ter-", "be-","ber-"
+                    
+                    let _kata = kata.replace(/^([bt]e)/,'');
+                    let data = await this.cekKamus(_kata)
+                    if (data) {
+                        return _kata
+                    }
+                    
+                    _kata = kata.replace(/^([bt]e[lr])/,'');	
+                    data = await this.cekKamus(_kata)
+                    if (data) {
+                        return _kata
+                    }
+                    
+                    let _kata_ = this.Del_Derivation_Suffixes(_kata);
+                    data = await this.cekKamus(_kata_)
+                    if (data) {
+                        return _kata_
+                    }
+                }
+                
+                if(kata.match(/^([mp]e)/)){
+                    let _kata = kata.replace(/^([mp]e)/,'');
+                    let data = await this.cekKamus(_kata)
+                    if (data) {
+                        return _kata
+                    }
+                    let _kata_ = this.Del_Derivation_Suffixes(_kata);
+                    data = await this.cekKamus(_kata_)
+                    if (data) {
+                        return _kata_
+                    }
+                    
+                    if(kata.match(/^(memper)/)){
+                        _kata = kata.replace(/^(memper)/,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                    
+                    if(kata.match(/^([mp]eng)/)){
+                        _kata = kata.replace(/^([mp]eng)/,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                        
+                        _kata = kata.replace(/^([mp]eng)/,'k');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                    
+                    if(kata.match(/^([mp]eny)/)){
+                        _kata = kata.replace(/^([mp]eny)/,'s');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                    
+                    if(kata.match(/^([mp]e[lr])/)){
+                        _kata = kata.replace(/^([mp]e[lr])/,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                    
+                    if(kata.match(/^([mp]en)/)){
+                        _kata = kata.replace(/^([mp]en)/,'t');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                        
+                        _kata = kata.replace(/^([mp]en)/,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }
+                        
+                    if(kata.match(/^([mp]em)/)){
+                        _kata = kata.replace(/^([mp]em)/,'');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                        
+                        _kata = kata.replace(/^([mp]em)/,'p');
+                        data = await this.cekKamus(_kata)
+                        if (data) {
+                            return _kata
+                        }
+                        
+                        _kata_ = this.Del_Derivation_Suffixes(_kata);
+                        data = await this.cekKamus(_kata_)
+                        if (data) {
+                            return _kata_
+                        }
+                    }	
+                }
+                return kataAsal;
+            },
+
+            //fungsi pencarian akar kata
+            async stemming(kata){ 
+                let data = await this.cekKamus(kata)
+                if (data) {
+                    return data
+                } else {
+                    kata = this.Del_Inflection_Suffixes(kata)
+                    data = await this.cekKamus(kata)
+                    if (data) {
+                        return data
+                    }
+                    kata = await this.Del_Derivation_Suffixes(kata)
+                    data = await this.cekKamus(kata)
+                    if (data) {
+                        return data
+                    }
+                    kata = await this.Del_Derivation_Prefix(kata)
+                    data = await this.cekKamus(kata)
+                    if (data) {
+                        return data
+                    }
+
+                    return false
+                }
+                
+                    
+            },
+
+
+            async analyze(){
+                if (this.input) {
+                    this.classify=true
+                    let wordarr = this.input.toLowerCase().split(' ')
+                    for(let i=0;i<wordarr.length;i++){
+                        wordarr[i] = wordarr[i].replace(/[^a-zA-Z ]/g, "")
+                        let finalword = await this.stemming(wordarr[i])
+                        if (finalword){
+                            wordarr[i] = finalword
+                        } else {
+                            wordarr[i] = null
+                        }                        
+                    }
+                    this.words = wordarr.filter(function (el) {
+                        return el != null;
+                    });
+                    this.input = '"' + this.input + '"'
+                } else {
+                    this.error=true
+                    setTimeout(() => {
+                        this.error = false
+                    }, 5000)
+                }
+            },
+            
+
+        }
+    }
+</script>
+</html>

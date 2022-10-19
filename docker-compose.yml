@@ -1,0 +1,51 @@
+version: '3'
+services:
+  # MySQL
+  db:
+    container_name: "db"
+    image: mysql:5.7
+    restart: always
+    tty: true
+    environment:
+      MYSQL_DATABASE: words
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/data:/docker-entrypoint-initdb.d
+      - ./db/conf:/etc/mysql/conf.d
+    networks:
+      - local-net
+
+  # Static Web
+  web:
+    container_name: "web"
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html
+    restart: always
+    networks:
+      - local-net
+    depends_on:
+      - db
+
+  # FastAPI
+  api:
+    container_name: "api"
+    build: ./docker/api
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./api:/usr/src/server
+    depends_on:
+      - db
+    networks:
+      - local-net
+
+networks:
+  local-net:
+    driver: bridge
